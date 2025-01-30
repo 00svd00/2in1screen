@@ -1,12 +1,15 @@
 // gcc -O2 -o 2in1screen 2in1screen.c
-
+// pass -w or -wayland to binary to work with wayland
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdbool.h>
 
 #define DATA_SIZE 256
 #define N_STATE 4
+
+
 char basedir[DATA_SIZE];
 char *basedir_end = NULL;
 char content[DATA_SIZE];
@@ -31,7 +34,7 @@ double accel_y = 0.0,
 #if N_STATE == 4
 	   accel_x = 0.0,
 #endif
-	   accel_gx = 2.0;
+	   accel_gx = 2.0,
 	   accel_gy = 6.0;
 
 int current_state = 0;
@@ -84,17 +87,23 @@ FILE* bdopen(char const *fname, char leave_open){
 	else return fin;
 }
 
-void rotate_screen(){
-	sprintf(command, "xrandr -o %s", ROT[current_state]);
-	system(command);
-  sprintf(command, "xinput set-prop \"%s\" \"Coordinate Transformation Matrix\" %s", "GXTP7380:00 27C6:0113", COOR[current_state]);
-	system(command);
-  sprintf(command, "xinput set-prop \"%s\" \"Coordinate Transformation Matrix\" %s", "GXTP7380:00 27C6:0113 Stylus Pen (0)", COOR[current_state]);
-	system(command);
+void rotate_screen(bool wayland){
+	if(wayland){
+		sprintf(command, "kscreen-doctor output.DSI-1.rotation.%s", ROT[current_state]);
+		system(command);
+	}else{
+		sprintf(command, "xrandr -o %s", ROT[current_state]);
+		system(command);
+		sprintf(command, "xinput set-prop \"%s\" \"Coordinate Transformation Matrix\" %s", "GXTP7380:00 27C6:0113", COOR[current_state]);
+		system(command);
+		sprintf(command, "xinput set-prop \"%s\" \"Coordinate Transformation Matrix\" %s", "GXTP7380:00 27C6:0113 Stylus Pen (0)", COOR[current_state]);
+		system(command);
+	}
 }
 
 int main(int argc, char const *argv[]) {
 	FILE *pf = popen("ls /sys/bus/iio/devices/iio:device*/in_accel*", "r");
+	bool wayland=false;
 	if(!pf){
 		fprintf(stderr, "IO Error.\n");
 		return 2;
@@ -110,7 +119,10 @@ int main(int argc, char const *argv[]) {
 		return 1;
 	}
 	pclose(pf);
-
+	if(strcmp(argv[argc-1],"-w")==0 || strcmp(argv[argc-1],"-wayland")==0){
+		fprintf(stdout, "Using wayland commands.\n");
+		wayland=true;
+	}
 	bdopen("in_accel_scale", 0);
 	double scale = atof(content);
 
@@ -129,7 +141,7 @@ int main(int argc, char const *argv[]) {
 		accel_x = atof(content) * scale;
 #endif
 		if(rotation_changed())
-			rotate_screen();
+			rotate_screen(wayland);
 		sleep(2);
 	}
 	
